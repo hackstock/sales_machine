@@ -5,7 +5,13 @@
 #include <Key.h>
 #include <Keypad.h>
 
+#include <SPI.h>
+#include <MFRC522.h>
+
 #include "StateMachine.h"
+
+#define RST_PIN 14 // Configurable, see typical pin layout above
+#define SS_PIN 10
 
 void keypadListener(KeypadEvent key);
 
@@ -23,11 +29,21 @@ byte colPins[COLS] = {5, 4, 3, 2};
 
 Keypad *keypad = new Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
 LiquidCrystal_I2C *lcd = new LiquidCrystal_I2C(0x27, 16, 2);
+MFRC522 *reader = new MFRC522(SS_PIN, RST_PIN);
 
-StateMachine machine = StateMachine(lcd);
+String amount = "";
+StateMachine machine = StateMachine(lcd, reader, &amount);
+
 
 void setup()
 {
+  Serial.begin(9600);
+  while (!Serial)
+    ;
+  SPI.begin();
+  reader->PCD_Init();
+  delay(4);
+
   machine.setup();
   delay(2000);
   keypad->addEventListener(keypadListener);
@@ -43,23 +59,41 @@ void loop()
 
 void keypadListener(KeypadEvent key)
 {
+  Serial.println(key);
   switch (keypad->getState())
   {
   case PRESSED:
-    if (key == 'D')
+    if (key == 'D' && amount != "")
     {
+      machine.setAmount(amount);
       machine.setState(State::WRITE_TO_RFID);
     }
-    if(key == 'C')
+    else if (key == 'C')
     {
+      amount = "";
+      machine.setAmount(amount);
       machine.setState(State::READY_FOR_INPUT);
     }
+    else if (key == 'B')
+    {
+      machine.setState(State::READ_FROM_RFID);
+    }
+    else if (key == 'A' || key == '*' || key == '#')
+    {
+      // Ignore these keys
+    }
+    else
+    {
+      amount = amount + key;
+      machine.setAmount(amount);
+      Serial.println(amount);
+    }
     break;
-    case IDLE:
+  case IDLE:
     break;
-    case HOLD:
+  case HOLD:
     break;
-    case RELEASED:
+  case RELEASED:
     break;
   }
 }
